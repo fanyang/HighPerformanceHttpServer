@@ -151,18 +151,24 @@ public class MyServer {
 							
 							if (!headers.containsKey(fileExt)) fileExt = "txt";
 							
-							fileBytes = loadFile(filePath);
-							files.put(filePath, Util.concateByteArray(headers.get(fileExt), fileBytes));
-							currentCache += fileBytes.length;
-							filePathesList.add(filePath);
-							
-							//Cache algorithm: FIFO
-							while(currentCache > FILE_CACHE) {
-								currentCache -= files.remove(filePathesList.remove(0)).length;
+							if ((fileBytes = loadFile(filePath)) == null) {
+								fileBytes = files.get(ERROR_PAGE);
+								//Cache the error path
+								files.put(filePath, fileBytes);
+							} else {
+								files.put(filePath, Util.concateByteArray(headers.get(fileExt), fileBytes));
+								currentCache += fileBytes.length;
+								filePathesList.add(filePath);
+								
+								//Cache algorithm: FIFO
+								while(currentCache > FILE_CACHE) {
+									currentCache -= files.remove(filePathesList.remove(0)).length;
+								}
 							}
 							
-						} catch (FileNotFoundException ex) {
-							fileBytes = files.get(ERROR_PAGE);
+							
+						} catch (Exception ex) {
+							ex.printStackTrace();
 						}
 					}
 					
@@ -202,8 +208,9 @@ public class MyServer {
 		
 		byte[] fileBuffer = new byte[FILE_SIZE];
 		int fileLength = 0;
-		
-		FileInputStream fis = new FileInputStream(DOC_ROOT + fileName);
+		File file = new File(DOC_ROOT + fileName);
+		if (!file.exists()) return null;
+		FileInputStream fis = new FileInputStream(file);
 		fileLength = fis.read(fileBuffer);
 		fis.close();
 		
