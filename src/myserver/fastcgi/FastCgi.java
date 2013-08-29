@@ -2,8 +2,6 @@ package myserver.fastcgi;
 
 import java.io.*;
 import java.net.Socket;
-import java.nio.ByteBuffer;
-import java.nio.channels.AsynchronousSocketChannel;
 import java.util.*;
 
 import myserver.util.Util;
@@ -36,8 +34,7 @@ public class FastCgi {
 	 * then receive from fastcgi client
 	 * then response to http client
 	 */
-	public void requestFastCgi(AsynchronousSocketChannel asynSocket, 
-				String path, String query){
+	public byte[] requestFastCgi(String path, String query) {
 		
 		byte[] responseByte = "HTTP/1.1 200 OK\n".getBytes();
 		byte[] fastCgiRequest = contructFastCgiHeader(path, query);
@@ -75,7 +72,7 @@ public class FastCgi {
 			e.printStackTrace();
 		} 
 		
-		asynSocket.write(ByteBuffer.wrap(responseByte));
+		return responseByte;
 	}
 	
 

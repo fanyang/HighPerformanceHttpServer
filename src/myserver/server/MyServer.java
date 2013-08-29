@@ -143,7 +143,9 @@ public class MyServer {
 							
 							//support FastCgi
 							if (fileExt.equals("php")) {
-								fastCgi.requestFastCgi(socket, filePath, query);
+								socket.write(ByteBuffer.wrap(
+										fastCgi.requestFastCgi(filePath, query)
+										));
 								return;
 							}
 							
