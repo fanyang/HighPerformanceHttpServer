@@ -16,7 +16,6 @@ public class MyServerMain {
 		Properties properties = new Properties();
 		FileReader fr = new FileReader("conf/config.properties");
 		properties.load(fr);
-		
 		fr.close();
 		
 		new MyServer(properties).start();

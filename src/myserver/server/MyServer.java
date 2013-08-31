@@ -8,6 +8,9 @@ import java.nio.channels.*;
 import java.util.concurrent.*;
 import java.util.zip.GZIPOutputStream;
 
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
 import myserver.fastcgi.FastCgi;
 import myserver.util.Util;
 
@@ -29,6 +32,7 @@ public class MyServer {
 	private final int FILE_SIZE;
 	private final int THREAD_POOL;
 	private final int BACKLOG;
+	private final String LOG_XML;
 	
 
 	private AsynchronousServerSocketChannel serverSocketChannel;
@@ -39,7 +43,7 @@ public class MyServer {
 	long currentCache = 0;
 	
 	private FastCgi fastCgi;
-	
+	private Logger logger;
 
 	/**
 	 * Init MyServer
@@ -58,6 +62,7 @@ public class MyServer {
 		FILE_SIZE = Integer.valueOf(properties.getProperty("FILE_SIZE"));
 		THREAD_POOL = Integer.valueOf(properties.getProperty("THREAD_POOL"));
 		BACKLOG = Integer.valueOf(properties.getProperty("BACKLOG"));
+		LOG_XML = properties.getProperty("LOG_XML");
 		
 		
 		generateHttpHeaders();
@@ -71,6 +76,9 @@ public class MyServer {
 				.bind(new InetSocketAddress(HOST, PORT), BACKLOG);
 		
 		fastCgi = new FastCgi(properties);
+		System.setProperty("log4j.configurationFile", LOG_XML);
+		logger = LogManager.getLogger();
+		
 		System.out.println("Server start on " + HOST + ":" + PORT);
 	}
 
@@ -170,6 +178,12 @@ public class MyServer {
 						} catch (Exception ex) {
 							ex.printStackTrace();
 						}
+					}
+					
+					if (fileBytes == files.get(ERROR_PAGE)) {
+						logger.error("{} - {}"
+								, ((InetSocketAddress) socket.getRemoteAddress()).getHostString()
+								, filePath);
 					}
 					
 					socket.write(ByteBuffer.wrap(fileBytes));
