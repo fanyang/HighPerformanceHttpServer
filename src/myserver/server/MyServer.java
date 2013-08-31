@@ -76,7 +76,7 @@ public class MyServer {
 				.bind(new InetSocketAddress(HOST, PORT), BACKLOG);
 		
 		fastCgi = new FastCgi(properties);
-		System.setProperty("log4j.configurationFile", LOG_XML);
+		System.setProperty("log4j.configurationFile", "conf/" + LOG_XML);
 		logger = LogManager.getLogger();
 		
 		System.out.println("Server start on " + HOST + ":" + PORT);
