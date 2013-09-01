@@ -94,7 +94,6 @@ public class MyServer {
 
 	}
 	
-	
 	/**
 	 * Process request when serversocket accept
 	 * @author Fan Yang
@@ -105,46 +104,47 @@ public class MyServer {
 
 
 		@Override
-		public void completed(AsynchronousSocketChannel socket, Object attachment) {
+		public void completed(final AsynchronousSocketChannel socket, Object attachment) {
 			
 			serverSocketChannel.accept(null, this);
 			
-			ByteBuffer requestBuffer = ByteBuffer.allocate(REQUEST_LENGTH);
+			final ByteBuffer requestBuffer = ByteBuffer.allocate(REQUEST_LENGTH);
+			
+			socket.read(requestBuffer, null, new CompletionHandler<Integer, Object>() {
 
-			try {
-				
-				int requestLength = socket.read(requestBuffer).get();
-				
-				//Parse HTTP request
-				if (requestLength > 0) {
-					String requestString = new String(requestBuffer.array(), 0, requestLength);
+				@Override
+				public void completed(Integer requestLength, Object attachment) {
 					
-					int firstIndex, lastIndex;
-					firstIndex = requestString.indexOf('\n');
-					if (firstIndex == -1) return;
-					String firstLine = requestString.substring(0, firstIndex);
-					
-					firstIndex = firstLine.indexOf(' ');
-					lastIndex = firstLine.lastIndexOf(' ');
-					if (firstIndex < 0 || lastIndex < 0 || firstIndex >= lastIndex) return;
-					String queryUri = firstLine.substring(firstIndex+1, lastIndex);
+					//Parse HTTP request
+					if (requestLength > 0) {
+						String requestString = new String(requestBuffer.array(), 0, requestLength);
+						
+						int firstIndex, lastIndex;
+						firstIndex = requestString.indexOf('\n');
+						if (firstIndex == -1) return;
+						String firstLine = requestString.substring(0, firstIndex);
+						
+						firstIndex = firstLine.indexOf(' ');
+						lastIndex = firstLine.lastIndexOf(' ');
+						if (firstIndex < 0 || lastIndex < 0 || firstIndex >= lastIndex) return;
+						String queryUri = firstLine.substring(firstIndex+1, lastIndex);
 
-					firstIndex = queryUri.indexOf('?');
-					String filePath = "";
-					String query = "";
-					if (firstIndex < 0) {
-						filePath = queryUri;
-					} else {
-						filePath = queryUri.substring(0, firstIndex);
-						query = queryUri.substring(firstIndex + 1);
-					}
-					if (filePath.equals("/")) filePath = INDEX_PAGE;
-					
-					//read request file
-					byte[] fileBytes = null;
-					
-					if ((fileBytes = files.get(filePath)) == null) {
-						try {
+						firstIndex = queryUri.indexOf('?');
+						String filePath = "";
+						String query = "";
+						if (firstIndex < 0) {
+							filePath = queryUri;
+						} else {
+							filePath = queryUri.substring(0, firstIndex);
+							query = queryUri.substring(firstIndex + 1);
+						}
+						if (filePath.equals("/")) filePath = INDEX_PAGE;
+						
+						//read request file
+						byte[] fileBytes = files.get(filePath);
+						
+						if (fileBytes == null) {
+
 							String fileExt = "";
 							lastIndex = filePath.lastIndexOf('.');
 							fileExt = filePath.substring(lastIndex+1);
@@ -159,57 +159,69 @@ public class MyServer {
 							
 							if (!headers.containsKey(fileExt)) fileExt = "txt";
 							
-							if ((fileBytes = loadFile(filePath)) == null) {
+							try {
+								fileBytes = null;
+								fileBytes = loadFile(filePath);
+							} catch(IOException ex) {
+								ex.printStackTrace();
+							}
+							
+							if (fileBytes == null) {
 								fileBytes = files.get(ERROR_PAGE);
 								//Cache the error path
 								files.put(filePath, fileBytes);
 							} else {
-								files.put(filePath, Util.concateByteArray(headers.get(fileExt), fileBytes));
-								currentCache += fileBytes.length;
-								filePathesList.add(filePath);
+								if (files.put(filePath,
+										Util.concateByteArray(headers.get(fileExt), fileBytes)) == null) {
+									currentCache += fileBytes.length;
+									filePathesList.add(filePath);
+								}
+								
 								
 								//Cache algorithm: FIFO
 								while(currentCache > FILE_CACHE) {
 									currentCache -= files.remove(filePathesList.remove(0)).length;
 								}
 							}
-							
-							
-						} catch (Exception ex) {
-							ex.printStackTrace();
-						}
-					}
-					
-					if (fileBytes == files.get(ERROR_PAGE)) {
-						logger.error("{} - {}"
-								, ((InetSocketAddress) socket.getRemoteAddress()).getHostString()
-								, filePath);
-					}
-					
-					socket.write(ByteBuffer.wrap(fileBytes));
-				}
-				
 
-			} catch (Exception e) {
-				e.printStackTrace();
-			} finally {
-				try {
-					socket.close();
-				} catch (IOException e) {
-					e.printStackTrace();
+						}
+						
+						if (fileBytes == files.get(ERROR_PAGE)) {
+							try {
+								logger.error("{} - {}"
+										, ((InetSocketAddress) socket.getRemoteAddress()).getHostString()
+										, filePath);
+							} catch (IOException ex) {
+								ex.printStackTrace();
+							}
+						}
+						
+						socket.write(ByteBuffer.wrap(fileBytes));
+					}
+					
+					try {
+						socket.close();
+					} catch (IOException ex) {
+						ex.printStackTrace();
+					}
 				}
-			}
+
+				@Override
+				public void failed(Throwable exc, Object attachment) {
+					exc.printStackTrace();
+				}
+			});
 
 		}
 
 		
 		@Override
 		public void failed(Throwable exc, Object attachment) {
-			System.out.println("Failed: " + exc);
-			
+			exc.printStackTrace();
 		}
 		
-	}
+	}	
+	
 	
 	
 	/**
@@ -218,8 +230,8 @@ public class MyServer {
 	 * @return
 	 * @throws Exception
 	 */
-	private byte[] loadFile(String fileName) throws Exception {
-		
+	private byte[] loadFile(String fileName) throws IOException {
+
 		byte[] fileBuffer = new byte[FILE_SIZE];
 		int fileLength = 0;
 		File file = new File(DOC_ROOT + fileName);
