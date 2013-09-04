@@ -153,9 +153,28 @@ public class MyServer {
 							if (fileExt.equals("php")) {
 								socket.write(ByteBuffer.wrap(
 										fastCgi.requestFastCgi(filePath, query)
-										));
+										), null, new CompletionHandler<Integer, Object>() {
+
+											@Override
+											public void completed(
+													Integer result, Object attachment) {
+
+												try {
+													socket.close();
+												} catch (IOException e) {
+													e.printStackTrace();
+												}
+											}
+
+											@Override
+											public void failed(Throwable exc,
+													Object attachment) {
+												exc.printStackTrace();
+											}
+										});
 								return;
 							}
+							
 							
 							if (!headers.containsKey(fileExt)) fileExt = "txt";
 							
@@ -196,14 +215,27 @@ public class MyServer {
 							}
 						}
 						
-						socket.write(ByteBuffer.wrap(fileBytes));
+						socket.write(ByteBuffer.wrap(fileBytes), null, new CompletionHandler<Integer, Object>() {
+
+							@Override
+							public void completed(Integer result,
+									Object attachment) {
+								try {
+									socket.close();
+								} catch (IOException ex) {
+									ex.printStackTrace();
+								}
+								
+							}
+
+							@Override
+							public void failed(Throwable exc, Object attachment) {
+								exc.printStackTrace();
+							}
+						});
 					}
 					
-					try {
-						socket.close();
-					} catch (IOException ex) {
-						ex.printStackTrace();
-					}
+					
 				}
 
 				@Override

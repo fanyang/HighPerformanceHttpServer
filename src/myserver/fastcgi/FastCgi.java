@@ -50,7 +50,7 @@ public class FastCgi {
 
 			while (true) {
 				socketInputStream.read(buffer, 0, 8);
-				if (buffer[1] != 6) { //end
+				if (buffer[1] != 6 ) { //end of fastcgi
 					break;
 				}
 				
