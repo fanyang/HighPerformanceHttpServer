@@ -5,6 +5,8 @@ import java.io.*;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.*;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.concurrent.*;
 import java.util.zip.GZIPOutputStream;
 
@@ -29,7 +31,6 @@ public class MyServer {
 	private final String ERROR_PAGE;
 	private final int REQUEST_LENGTH;
 	private final long FILE_CACHE;
-	private final int FILE_SIZE;
 	private final int THREAD_POOL;
 	private final int BACKLOG;
 	private final String LOG_XML;
@@ -59,7 +60,6 @@ public class MyServer {
 		ERROR_PAGE = properties.getProperty("ERROR_PAGE");
 		REQUEST_LENGTH = Integer.valueOf(properties.getProperty("REQUEST_LENGTH"));
 		FILE_CACHE = Long.valueOf(properties.getProperty("FILE_CACHE"));
-		FILE_SIZE = Integer.valueOf(properties.getProperty("FILE_SIZE"));
 		THREAD_POOL = Integer.valueOf(properties.getProperty("THREAD_POOL"));
 		BACKLOG = Integer.valueOf(properties.getProperty("BACKLOG"));
 		LOG_XML = properties.getProperty("LOG_XML");
@@ -251,22 +251,18 @@ public class MyServer {
 	 */
 	private byte[] loadFile(String fileName) {
 		
-		byte[] fileBuffer = new byte[FILE_SIZE];
-		int fileLength = 0;
-		File file = new File(DOC_ROOT + fileName);
-		if (!file.exists()) return null;
-		
-		try(FileInputStream fis = new FileInputStream(file);) {
-			fileLength = fis.read(fileBuffer);
-		} catch (IOException e) {
-			e.printStackTrace();
+		byte[] fileBuffer = null;
+		try {
+			fileBuffer = Files.readAllBytes(Paths.get(DOC_ROOT, fileName));
+		} catch (IOException e1) {
+			return null;
 		}
 
 		//Save Gzip compressed file
 		ByteArrayOutputStream baos = new ByteArrayOutputStream();
 		byte[] fileBytes = null;
 		try(GZIPOutputStream gos = new GZIPOutputStream(baos);) {
-			gos.write(fileBuffer, 0, fileLength);
+			gos.write(fileBuffer);
 			gos.finish();
 			fileBytes = baos.toByteArray();
 			
