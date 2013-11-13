@@ -14,11 +14,11 @@ public class MyServerMain {
 	public static void main(String[] args) throws Exception {
 		
 		Properties properties = new Properties();
-		FileReader fr = new FileReader("conf/config.properties");
-		properties.load(fr);
-		fr.close();
+		FileReader propertiesFileReader = new FileReader("conf/config.properties");
+		properties.load(propertiesFileReader);
+		propertiesFileReader.close();
 		
-		new MyServer(properties).start();
+		MyServer.start(properties);
 
 
 	}

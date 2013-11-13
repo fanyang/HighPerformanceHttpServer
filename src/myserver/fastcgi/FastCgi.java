@@ -4,11 +4,11 @@ import java.io.*;
 import java.net.Socket;
 import java.util.*;
 
-import myserver.util.Util;
+import myserver.util.ArrayUtil;
 
 
 /**
- * FastCgi process class
+ * FastCgi processing class
  * @author Fan Yang
  *
  */
@@ -63,7 +63,7 @@ public class FastCgi {
 				
 				socketInputStream.read(buffer, 0, contentLength + padding);
 				
-				responseByte = Util.concateByteArray(responseByte, buffer, contentLength);
+				responseByte = ArrayUtil.concateByteArray(responseByte, buffer, contentLength);
 			}
 			
 			buffer = null;
@@ -81,12 +81,12 @@ public class FastCgi {
 	 */
 	private byte[] contructFastCgiHeader(String path, String query) {
 		
-		Map<String, String> headerParams = new HashMap<String, String>();
+		Map<String, String> headerParams = new HashMap<>();
 		headerParams.put("SCRIPT_FILENAME", FASTCGI_ROOT + path);
 		headerParams.put("QUERY_STRING", query);
 		headerParams.put("REQUEST_METHOD", "GET");
 		headerParams.put("GATEWAY_INTERFACE", "CGI/1.1");
-		headerParams.put("SERVER_SOFTWARE", "MyServer/0.0.1");
+		headerParams.put("SERVER_SOFTWARE", "MyServer/13.11.12");
 		
 //		headerParams.put("CONTENT_TYPE", "");
 //		headerParams.put("CONTENT_LENGTH", "");
@@ -107,7 +107,7 @@ public class FastCgi {
 //		headerParams.put("HTTP_DNT", "1");
 //		headerParams.put("HTTP_CONNECTION", "Keep-Alive");
 		
-		LinkedList<Byte> requestByteList = new LinkedList<Byte>();
+		LinkedList<Byte> requestByteList = new LinkedList<>();
 		Set<String> keySet = headerParams.keySet();
 		for (String key : keySet) {
 			String value = headerParams.get(key);
@@ -152,11 +152,7 @@ public class FastCgi {
 		return requestByte;
 	}
 	
-	
-	
-	
+
 	
 }
-
-
 

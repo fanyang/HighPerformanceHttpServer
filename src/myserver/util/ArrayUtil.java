@@ -1,11 +1,11 @@
 package myserver.util;
 
 /**
- * Utilities of My Server
+ * Array Utilities for My Server
  * @author Fan Yang
  *
  */
-public class Util {
+public class ArrayUtil {
 
 	/**
 	 * concatenate two array
@@ -14,11 +14,8 @@ public class Util {
 	 * @return
 	 */
 	public static byte[] concateByteArray(byte[] byteArray1, byte[] byteArray2) {
-		
-		byte[] result = new byte[byteArray1.length + byteArray2.length];
-		System.arraycopy(byteArray1, 0, result, 0, byteArray1.length);
-		System.arraycopy(byteArray2, 0, result, byteArray1.length, byteArray2.length);
-		return result;
+
+		return concateByteArray(byteArray1, byteArray2, byteArray2.length);
 		
 	}
 	

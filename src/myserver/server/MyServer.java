@@ -12,7 +12,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import myserver.fastcgi.FastCgi;
-import myserver.util.Util;
+import myserver.util.ArrayUtil;
 
 
 /**
@@ -37,10 +37,10 @@ public class MyServer {
 
 	private AsynchronousServerSocketChannel serverSocketChannel;
 	
-	Map<String, byte[]> files = new HashMap<String, byte[]>();
-	Map<String, byte[]> headers = new HashMap<String, byte[]>();
-	List<String> filePathesList = new LinkedList<String>();
-	long currentCache = 0;
+	private Map<String, byte[]> files = new ConcurrentSkipListMap<>();
+	private final static Map<String, byte[]> headers = new HashMap<>();
+	private List<String> filePathesList = new LinkedList<>();
+	private long currentCacheSize = 0;
 	
 	private FastCgi fastCgi;
 	private Logger logger;
@@ -50,7 +50,7 @@ public class MyServer {
 	 * @param properties
 	 * @throws Exception
 	 */
-	public MyServer(Properties properties) throws Exception {
+	private MyServer(Properties properties) throws Exception {
 		
 		HOST = properties.getProperty("HOST");
 		PORT = Integer.valueOf(properties.getProperty("PORT"));
@@ -66,9 +66,9 @@ public class MyServer {
 		
 		
 		generateHttpHeaders();
-		files.put(INDEX_PAGE, Util.concateByteArray(headers.get("html"), loadFile(INDEX_PAGE)));
+		files.put(INDEX_PAGE, ArrayUtil.concateByteArray(headers.get("html"), loadFile(INDEX_PAGE)));
 		String errorHeader = "HTTP/1.1 404 Not Found\nContent-Encoding: gzip\nContent-Type: text/html\n\n";
-		files.put(ERROR_PAGE, Util.concateByteArray(errorHeader.getBytes(), loadFile(ERROR_PAGE)));
+		files.put(ERROR_PAGE, ArrayUtil.concateByteArray(errorHeader.getBytes(), loadFile(ERROR_PAGE)));
 		
 		serverSocketChannel = AsynchronousServerSocketChannel
 				.open(AsynchronousChannelGroup.withCachedThreadPool(
@@ -83,10 +83,10 @@ public class MyServer {
 	}
 
 
-	public void start() throws InterruptedException,
-			ExecutionException, TimeoutException {
+	public static void start(Properties properties) throws Exception {
 		
-		serverSocketChannel.accept(null, new ServerSocketCompletionHandler());
+		MyServer myServer = new MyServer(properties);
+		myServer.serverSocketChannel.accept(null, myServer.new ServerSocketCompletionHandler());
 		
 		while (true) {
 			Thread.sleep(Long.MAX_VALUE);
@@ -95,7 +95,7 @@ public class MyServer {
 	}
 	
 	/**
-	 * Process request when serversocket accept
+	 * Process request when server socket accept
 	 * @author Fan Yang
 	 *
 	 */
@@ -104,146 +104,14 @@ public class MyServer {
 
 
 		@Override
-		public void completed(final AsynchronousSocketChannel socket, Object attachment) {
+		public void completed(AsynchronousSocketChannel socket, Object attachment) {
 			
 			serverSocketChannel.accept(null, this);
 			
-			final ByteBuffer requestBuffer = ByteBuffer.allocate(REQUEST_LENGTH);
+			ByteBuffer requestBuffer = ByteBuffer.allocate(REQUEST_LENGTH);
 			
-			socket.read(requestBuffer, null, new CompletionHandler<Integer, Object>() {
-
-				@Override
-				public void completed(Integer requestLength, Object attachment) {
-					
-					//Parse HTTP request
-					if (requestLength > 0) {
-						String requestString = new String(requestBuffer.array(), 0, requestLength);
-						
-						int firstIndex, lastIndex;
-						firstIndex = requestString.indexOf('\n');
-						if (firstIndex == -1) return;
-						String firstLine = requestString.substring(0, firstIndex);
-						
-						firstIndex = firstLine.indexOf(' ');
-						lastIndex = firstLine.lastIndexOf(' ');
-						if (firstIndex < 0 || lastIndex < 0 || firstIndex >= lastIndex) return;
-						String queryUri = firstLine.substring(firstIndex+1, lastIndex);
-
-						firstIndex = queryUri.indexOf('?');
-						String filePath = "";
-						String query = "";
-						if (firstIndex < 0) {
-							filePath = queryUri;
-						} else {
-							filePath = queryUri.substring(0, firstIndex);
-							query = queryUri.substring(firstIndex + 1);
-						}
-						if (filePath.equals("/")) filePath = INDEX_PAGE;
-						
-						//read request file
-						byte[] fileBytes = files.get(filePath);
-						
-						if (fileBytes == null) {
-
-							String fileExt = "";
-							lastIndex = filePath.lastIndexOf('.');
-							fileExt = filePath.substring(lastIndex+1);
-							
-							//support FastCgi
-							if (fileExt.equals("php")) {
-								socket.write(ByteBuffer.wrap(
-										fastCgi.requestFastCgi(filePath, query)
-										), null, new CompletionHandler<Integer, Object>() {
-
-											@Override
-											public void completed(
-													Integer result, Object attachment) {
-
-												try {
-													socket.close();
-												} catch (IOException e) {
-													e.printStackTrace();
-												}
-											}
-
-											@Override
-											public void failed(Throwable exc,
-													Object attachment) {
-												exc.printStackTrace();
-											}
-										});
-								return;
-							}
-							
-							
-							if (!headers.containsKey(fileExt)) fileExt = "txt";
-							
-							try {
-								fileBytes = null;
-								fileBytes = loadFile(filePath);
-							} catch(IOException ex) {
-								ex.printStackTrace();
-							}
-							
-							if (fileBytes == null) {
-								fileBytes = files.get(ERROR_PAGE);
-								//Cache the error path
-								files.put(filePath, fileBytes);
-							} else {
-								if (files.put(filePath,
-										Util.concateByteArray(headers.get(fileExt), fileBytes)) == null) {
-									currentCache += fileBytes.length;
-									filePathesList.add(filePath);
-								}
-								
-								
-								//Cache algorithm: FIFO
-								while(currentCache > FILE_CACHE) {
-									currentCache -= files.remove(filePathesList.remove(0)).length;
-								}
-							}
-
-						}
-						
-						if (fileBytes == files.get(ERROR_PAGE)) {
-							try {
-								logger.error("{} - {}"
-										, ((InetSocketAddress) socket.getRemoteAddress()).getHostString()
-										, filePath);
-							} catch (IOException ex) {
-								ex.printStackTrace();
-							}
-						}
-						
-						socket.write(ByteBuffer.wrap(fileBytes), null, new CompletionHandler<Integer, Object>() {
-
-							@Override
-							public void completed(Integer result,
-									Object attachment) {
-								try {
-									socket.close();
-								} catch (IOException ex) {
-									ex.printStackTrace();
-								}
-								
-							}
-
-							@Override
-							public void failed(Throwable exc, Object attachment) {
-								exc.printStackTrace();
-							}
-						});
-					}
-					
-					
-				}
-
-				@Override
-				public void failed(Throwable exc, Object attachment) {
-					exc.printStackTrace();
-				}
-			});
-
+			socket.read(requestBuffer, null
+					, new SocketReadCompletionHandler(socket, requestBuffer));
 		}
 
 		
@@ -252,8 +120,127 @@ public class MyServer {
 			exc.printStackTrace();
 		}
 		
-	}	
+	}
 	
+	
+
+	private class SocketReadCompletionHandler implements CompletionHandler<Integer, Object> {
+		
+		private AsynchronousSocketChannel socket;
+		private ByteBuffer requestBuffer;
+		
+		public SocketReadCompletionHandler(AsynchronousSocketChannel socket, ByteBuffer requestBuffer) {
+			this.socket = socket;
+			this.requestBuffer = requestBuffer;
+		}
+
+		@Override
+		public void completed(Integer requestLength, Object attachment) {
+			//Parse HTTP request
+			if (requestLength > 0) {
+				String requestString = new String(requestBuffer.array(), 0, requestLength);
+				
+				int firstIndex, lastIndex;
+				firstIndex = requestString.indexOf('\n');
+				if (firstIndex == -1) return;
+				String firstLine = requestString.substring(0, firstIndex);
+				
+				firstIndex = firstLine.indexOf(' ');
+				lastIndex = firstLine.lastIndexOf(' ');
+				if (firstIndex < 0 || lastIndex < 0 || firstIndex >= lastIndex) return;
+				String queryUri = firstLine.substring(firstIndex+1, lastIndex);
+
+				firstIndex = queryUri.indexOf('?');
+				String filePath = "";
+				String query = "";
+				if (firstIndex < 0) {
+					filePath = queryUri;
+				} else {
+					filePath = queryUri.substring(0, firstIndex);
+					query = queryUri.substring(firstIndex + 1);
+				}
+				if (filePath.equals("/")) filePath = INDEX_PAGE;
+				
+				//read request file
+				byte[] fileBytes = files.get(filePath);
+				
+				//file not in cache
+				if (fileBytes == null) {
+
+					String fileExt = "";
+					lastIndex = filePath.lastIndexOf('.');
+					fileExt = filePath.substring(lastIndex+1);
+					
+					
+					if (fileExt.equals("php")) {
+						//support FastCgi
+						fileBytes = fastCgi.requestFastCgi(filePath, query);
+					} else {
+						if (!headers.containsKey(fileExt)) fileExt = "txt";
+						fileBytes = loadFile(filePath);
+						if (fileBytes == null) {
+							fileBytes = files.get(ERROR_PAGE);
+							//Cache the error path
+							files.put(filePath, fileBytes);
+						} else { //load file from disk to cache
+							byte[] retByteArray = ArrayUtil.concateByteArray(headers.get(fileExt), fileBytes);
+							if (files.put(filePath, retByteArray) == null) {
+								currentCacheSize += fileBytes.length;
+								filePathesList.add(filePath);
+							}
+							fileBytes = retByteArray;
+							
+							
+							//Cache algorithm: FIFO
+							while(currentCacheSize > FILE_CACHE) 
+								currentCacheSize -= files.remove(filePathesList.remove(0)).length;
+							
+						}
+						
+					}
+					
+				}
+				
+				//error log
+				if (fileBytes == files.get(ERROR_PAGE)) {
+					try {
+						logger.error("{} - {}"
+								, ((InetSocketAddress) socket.getRemoteAddress()).getHostString()
+								, filePath);
+					} catch (IOException ex) {
+						ex.printStackTrace();
+					}
+				}
+				
+				//write file to client
+				socket.write(ByteBuffer.wrap(fileBytes), null, new CompletionHandler<Integer, Object>() {
+
+					@Override
+					public void completed(Integer result,
+							Object attachment) {
+						try {
+							socket.close();
+						} catch (IOException ex) {
+							ex.printStackTrace();
+						}
+						
+					}
+
+					@Override
+					public void failed(Throwable exc, Object attachment) {
+						exc.printStackTrace();
+					}
+				});
+			}
+		}
+
+		
+		@Override
+		public void failed(Throwable exc, Object attachment) {
+			exc.printStackTrace();
+		}
+		
+	}
 	
 	
 	/**
@@ -262,75 +249,58 @@ public class MyServer {
 	 * @return
 	 * @throws Exception
 	 */
-	private byte[] loadFile(String fileName) throws IOException {
-
+	private byte[] loadFile(String fileName) {
+		
 		byte[] fileBuffer = new byte[FILE_SIZE];
 		int fileLength = 0;
 		File file = new File(DOC_ROOT + fileName);
 		if (!file.exists()) return null;
-		FileInputStream fis = new FileInputStream(file);
-		fileLength = fis.read(fileBuffer);
-		fis.close();
 		
+		try(FileInputStream fis = new FileInputStream(file);) {
+			fileLength = fis.read(fileBuffer);
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+
 		//Save Gzip compressed file
 		ByteArrayOutputStream baos = new ByteArrayOutputStream();
-		GZIPOutputStream gos = new GZIPOutputStream(baos);
-		gos.write(fileBuffer, 0, fileLength);
-		gos.finish();
-		
-		byte[] fileBytes = baos.toByteArray();
-		gos.close();
-		baos.close();
-
+		byte[] fileBytes = null;
+		try(GZIPOutputStream gos = new GZIPOutputStream(baos);) {
+			gos.write(fileBuffer, 0, fileLength);
+			gos.finish();
+			fileBytes = baos.toByteArray();
+			
+		} catch (IOException e) {
+			e.printStackTrace();
+		}
+		 
 		return fileBytes;
 	}
 	
 	
 	/**
-	 * generate http headers for different types
+	 * generate HTTP headers for different types
 	 */
 	private void generateHttpHeaders() {
 		
-		String[] fileTypes = {"html", "css", "js", "png", "jpg", "gif", "ico", "txt"};
+		String[][] fileTypes = {
+					{"html", "text/html"},
+					{"css", "text/css"}, 
+					{"js", "application/javascript"}, 
+					{"png", "image/png"}, 
+					{"jpg", "image/jpeg"}, 
+					{"gif", "image/gif"}, 
+					{"ico", "image/x-icon"}, 
+					{"txt", "text/plain"},
+				};
 		
-		for (String fileType : fileTypes) {
-			String typeString;
-			
-			switch (fileType) {
-			case "html":
-				typeString = "text/html";
-				break;
-			case "css":
-				typeString = "text/css";
-				break;
-			case "js":
-				typeString = "application/javascript";
-				break;
-			case "png":
-				typeString = "image/png";
-				break;
-			case "jpg":
-				typeString = "image/jpeg";
-				break;
-			case "gif":
-				typeString = "image/gif";
-				break;
-			case "ico":
-				typeString = "image/x-icon";
-				break;
-			case "txt":
-				typeString = "text/plain";
-				break;	
-			default:
-				typeString = "text/plain";
-				break;
-			}
-			
+		for (String fileType[] : fileTypes) {
+			String typeString = fileType[1];
 			String httpHeader = 
 					"HTTP/1.1 200 OK\nContent-Encoding: gzip\nContent-Type: " 
 							+ typeString + "\n\n";
-			
-			headers.put(fileType, httpHeader.getBytes());
+
+			headers.put(fileType[0], httpHeader.getBytes());
 		}
 		
 	}
